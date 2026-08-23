@@ -198,8 +198,10 @@ type MCPClientConfig struct {
 	// GoogleIDTokenAudience, when set, authenticates backend requests with a
 	// Google-signed ID token for this audience (e.g. a Cloud Run service URL
 	// protected by IAM). Tokens are minted from the ambient service account
-	// credentials and sent as the Authorization header, so it cannot be
-	// combined with a configured Authorization header.
+	// credentials and sent as the Authorization header — or as
+	// X-Serverless-Authorization when a static Authorization header is also
+	// configured, matching Cloud Run's dual-header convention (IAM validates
+	// and strips X-Serverless-Authorization, the app sees Authorization).
 	GoogleIDTokenAudience string `json:"googleIDTokenAudience,omitempty"`
 
 	Options *Options `json:"options,omitempty"`
@@ -223,6 +225,16 @@ type MCPClientConfig struct {
 // IsStdio returns true if this is a stdio-based MCP server
 func (c *MCPClientConfig) IsStdio() bool {
 	return c.TransportType == MCPClientTypeStdio
+}
+
+// IDTokenHeader returns the header the minted Google ID token should be sent
+// in: X-Serverless-Authorization when a static Authorization header is
+// configured (Cloud Run's dual-header convention), Authorization otherwise.
+func (c *MCPClientConfig) IDTokenHeader() string {
+	if _, ok := c.Headers["Authorization"]; ok {
+		return "X-Serverless-Authorization"
+	}
+	return "Authorization"
 }
 
 // IsAggregate returns true if this is an aggregate server

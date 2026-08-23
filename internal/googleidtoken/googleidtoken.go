@@ -18,10 +18,11 @@ var (
 	sources = map[string]oauth2.TokenSource{}
 )
 
-// Bearer returns a valid ID token for the audience. Token sources are cached
-// per audience and handle refresh internally, so this is cheap per request.
-func Bearer(audience string) (string, error) {
+// source returns a cached token source for the audience. Sources refresh
+// tokens internally, so lookups after the first are cheap.
+func source(audience string) (oauth2.TokenSource, error) {
 	mu.Lock()
+	defer mu.Unlock()
 	ts, ok := sources[audience]
 	if !ok {
 		var err error
@@ -29,13 +30,19 @@ func Bearer(audience string) (string, error) {
 		// refreshes tokens for the lifetime of the process.
 		ts, err = idtoken.NewTokenSource(context.Background(), audience)
 		if err != nil {
-			mu.Unlock()
-			return "", fmt.Errorf("creating ID token source for %q: %w", audience, err)
+			return nil, fmt.Errorf("creating ID token source for %q: %w", audience, err)
 		}
 		sources[audience] = ts
 	}
-	mu.Unlock()
+	return ts, nil
+}
 
+// Bearer returns a valid ID token for the audience.
+func Bearer(audience string) (string, error) {
+	ts, err := source(audience)
+	if err != nil {
+		return "", err
+	}
 	tok, err := ts.Token()
 	if err != nil {
 		return "", fmt.Errorf("minting ID token for %q: %w", audience, err)
@@ -44,7 +51,27 @@ func Bearer(audience string) (string, error) {
 }
 
 // HTTPClient returns an http.Client that attaches an ID token for the
-// audience to every request.
-func HTTPClient(audience string) (*http.Client, error) {
-	return idtoken.NewClient(context.Background(), audience)
+// audience to every request in the given header.
+func HTTPClient(audience, header string) (*http.Client, error) {
+	ts, err := source(audience)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{Transport: &tokenTransport{ts: ts, header: header, base: http.DefaultTransport}}, nil
+}
+
+type tokenTransport struct {
+	ts     oauth2.TokenSource
+	header string
+	base   http.RoundTripper
+}
+
+func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	tok, err := t.ts.Token()
+	if err != nil {
+		return nil, err
+	}
+	req = req.Clone(req.Context())
+	req.Header.Set(t.header, "Bearer "+tok.AccessToken)
+	return t.base.RoundTrip(req)
 }

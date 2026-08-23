@@ -160,13 +160,8 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	c.GoogleIDTokenAudience = raw.GoogleIDTokenAudience
-	if c.GoogleIDTokenAudience != "" {
-		if c.URL == "" {
-			return fmt.Errorf("googleIDTokenAudience requires a url-based transport (sse or streamable-http)")
-		}
-		if _, ok := c.Headers["Authorization"]; ok {
-			return fmt.Errorf("googleIDTokenAudience cannot be combined with a configured Authorization header")
-		}
+	if c.GoogleIDTokenAudience != "" && c.URL == "" {
+		return fmt.Errorf("googleIDTokenAudience requires a url-based transport (sse or streamable-http)")
 	}
 
 	return nil

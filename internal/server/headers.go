@@ -17,7 +17,7 @@ func copyRequestHeaders(dst, src http.Header) {
 		case "Connection", "Upgrade", "Host",
 			"Keep-Alive", "Transfer-Encoding", "TE", "Trailer",
 			"Proxy-Authorization", "Proxy-Authenticate",
-			"Authorization", "Cookie",
+			"Authorization", "X-Serverless-Authorization", "Cookie",
 			"Accept-Encoding":
 			continue
 		}

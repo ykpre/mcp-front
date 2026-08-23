@@ -46,7 +46,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 			jsonwriter.WriteInternalServerError(w, "backend authentication failed")
 			return
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set(config.IDTokenHeader(), "Bearer "+token)
 	}
 
 	// Ensure we accept SSE

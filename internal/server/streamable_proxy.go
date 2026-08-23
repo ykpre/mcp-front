@@ -51,7 +51,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 			jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "backend authentication failed")
 			return
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set(config.IDTokenHeader(), "Bearer "+token)
 	}
 
 	req.Header.Set("Accept", "application/json, text/event-stream")

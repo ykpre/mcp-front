@@ -115,7 +115,11 @@ the backend needs no auth code at all:
 ```
 
 Grant `roles/run.invoker` on the backend to mcp-front's service account.
-Cannot be combined with a configured `Authorization` header.
+
+If the backend also needs a static `Authorization` header for its own
+application-level auth, configure both: the ID token is then sent in
+`X-Serverless-Authorization` (which Cloud Run validates and strips) and the
+static header passes through untouched.
 
 **[Architecture](https://stainless-api.github.io/mcp-front/architecture/)** — Per-service audience validation, token flow, and MCP spec compliance.
 

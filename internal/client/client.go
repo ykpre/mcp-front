@@ -112,7 +112,7 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 		var idTokenClient *http.Client
 		if conf.GoogleIDTokenAudience != "" {
 			var err error
-			idTokenClient, err = googleidtoken.HTTPClient(conf.GoogleIDTokenAudience)
+			idTokenClient, err = googleidtoken.HTTPClient(conf.GoogleIDTokenAudience, conf.IDTokenHeader())
 			if err != nil {
 				return nil, fmt.Errorf("creating ID token client for %q: %w", conf.GoogleIDTokenAudience, err)
 			}

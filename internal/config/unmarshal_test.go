@@ -625,7 +625,7 @@ func TestMCPClientConfig_GoogleIDTokenAudience(t *testing.T) {
 		assert.Contains(t, err.Error(), "url-based transport")
 	})
 
-	t.Run("rejected with configured Authorization header", func(t *testing.T) {
+	t.Run("with configured Authorization header uses X-Serverless-Authorization", func(t *testing.T) {
 		input := `{
 			"transportType": "streamable-http",
 			"url": "https://backend.example.com/mcp",
@@ -633,8 +633,18 @@ func TestMCPClientConfig_GoogleIDTokenAudience(t *testing.T) {
 			"googleIDTokenAudience": "https://backend.example.com"
 		}`
 		var config MCPClientConfig
-		err := json.Unmarshal([]byte(input), &config)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Authorization")
+		require.NoError(t, json.Unmarshal([]byte(input), &config))
+		assert.Equal(t, "X-Serverless-Authorization", config.IDTokenHeader())
+	})
+
+	t.Run("without Authorization header uses Authorization", func(t *testing.T) {
+		input := `{
+			"transportType": "streamable-http",
+			"url": "https://backend.example.com/mcp",
+			"googleIDTokenAudience": "https://backend.example.com"
+		}`
+		var config MCPClientConfig
+		require.NoError(t, json.Unmarshal([]byte(input), &config))
+		assert.Equal(t, "Authorization", config.IDTokenHeader())
 	})
 }

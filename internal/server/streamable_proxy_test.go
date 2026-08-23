@@ -72,3 +72,34 @@ func TestForwardStreamablePostToBackend_GoogleIDToken(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "Bearer fake-id-token", gotAuth)
 }
+
+func TestForwardStreamablePostToBackend_GoogleIDTokenDualHeader(t *testing.T) {
+	var gotAuth, gotServerless string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotServerless = r.Header.Get("X-Serverless-Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+	}))
+	defer backend.Close()
+
+	orig := mintIDToken
+	mintIDToken = func(audience string) (string, error) { return "fake-id-token", nil }
+	defer func() { mintIDToken = orig }()
+
+	cfg := &config.MCPClientConfig{
+		URL:                   backend.URL,
+		Timeout:               5 * time.Second,
+		Headers:               map[string]string{"Authorization": "Bearer static-app-token"},
+		GoogleIDTokenAudience: "https://backend.example.com",
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/test/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	rec := httptest.NewRecorder()
+
+	forwardStreamablePostToBackend(context.Background(), rec, req, cfg)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "Bearer static-app-token", gotAuth, "static app token stays in Authorization")
+	assert.Equal(t, "Bearer fake-id-token", gotServerless, "ID token goes to X-Serverless-Authorization")
+}
