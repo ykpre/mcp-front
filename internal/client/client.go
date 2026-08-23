@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/stainless-api/mcp-front/internal/config"
+	"github.com/stainless-api/mcp-front/internal/googleidtoken"
 	"github.com/stainless-api/mcp-front/internal/log"
 	"github.com/stainless-api/mcp-front/internal/storage"
 )
@@ -105,6 +107,17 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 	}
 
 	if conf.URL != "" {
+		// An idtoken client attaches a Google-signed ID token for the audience
+		// to every request, refreshing it as it expires.
+		var idTokenClient *http.Client
+		if conf.GoogleIDTokenAudience != "" {
+			var err error
+			idTokenClient, err = googleidtoken.HTTPClient(conf.GoogleIDTokenAudience)
+			if err != nil {
+				return nil, fmt.Errorf("creating ID token client for %q: %w", conf.GoogleIDTokenAudience, err)
+			}
+		}
+
 		if conf.TransportType == config.MCPClientTypeStreamable {
 			var options []transport.StreamableHTTPCOption
 			if len(conf.Headers) > 0 {
@@ -112,6 +125,9 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 			}
 			if conf.Timeout > 0 {
 				options = append(options, transport.WithHTTPTimeout(conf.Timeout))
+			}
+			if idTokenClient != nil {
+				options = append(options, transport.WithHTTPBasicClient(idTokenClient))
 			}
 			mcpClient, err := client.NewStreamableHttpClient(conf.URL, options...)
 			if err != nil {
@@ -122,6 +138,9 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 			var options []transport.ClientOption
 			if len(conf.Headers) > 0 {
 				options = append(options, client.WithHeaders(conf.Headers))
+			}
+			if idTokenClient != nil {
+				options = append(options, transport.WithHTTPClient(idTokenClient))
 			}
 			mcpClient, err := client.NewSSEMCPClient(conf.URL, options...)
 			if err != nil {

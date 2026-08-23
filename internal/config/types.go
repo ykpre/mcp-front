@@ -195,6 +195,13 @@ type MCPClientConfig struct {
 	HeadersNeedToken map[string]bool   `json:"-"` // Track which headers need token substitution
 	Timeout          time.Duration     `json:"timeout,omitempty"`
 
+	// GoogleIDTokenAudience, when set, authenticates backend requests with a
+	// Google-signed ID token for this audience (e.g. a Cloud Run service URL
+	// protected by IAM). Tokens are minted from the ambient service account
+	// credentials and sent as the Authorization header, so it cannot be
+	// combined with a configured Authorization header.
+	GoogleIDTokenAudience string `json:"googleIDTokenAudience,omitempty"`
+
 	Options *Options `json:"options,omitempty"`
 
 	// User token requirements

@@ -97,6 +97,26 @@ See the **[Quickstart](https://stainless-api.github.io/mcp-front/quickstart/)** 
 
 **[Service Authentication](https://stainless-api.github.io/mcp-front/service-authentication/)** — Per-user tokens for services like Notion, Linear, and other OAuth or API key services.
 
+### Backends behind Cloud Run IAM
+
+For `sse` and `streamable-http` backends protected by Google Cloud IAM (e.g. a
+Cloud Run service deployed with `--no-allow-unauthenticated`), set
+`googleIDTokenAudience` to the backend's audience (usually its service URL).
+mcp-front then mints Google-signed ID tokens from its runtime service account
+and sends them as the `Authorization` header — no static tokens to manage, and
+the backend needs no auth code at all:
+
+```json
+"my-backend": {
+  "transportType": "streamable-http",
+  "url": "https://my-backend-abc123-uc.a.run.app/mcp",
+  "googleIDTokenAudience": "https://my-backend-abc123-uc.a.run.app"
+}
+```
+
+Grant `roles/run.invoker` on the backend to mcp-front's service account.
+Cannot be combined with a configured `Authorization` header.
+
 **[Architecture](https://stainless-api.github.io/mcp-front/architecture/)** — Per-service audience validation, token flow, and MCP spec compliance.
 
 **[API Reference](https://stainless-api.github.io/mcp-front/api-reference/)** — HTTP endpoints, OAuth discovery, and client registration.

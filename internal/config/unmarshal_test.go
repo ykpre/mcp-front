@@ -600,3 +600,41 @@ func TestMCPClientConfig_DirectTypeDefault(t *testing.T) {
 	assert.Equal(t, ServerTypeDirect, cfg.Type)
 	assert.False(t, cfg.IsAggregate())
 }
+
+func TestMCPClientConfig_GoogleIDTokenAudience(t *testing.T) {
+	t.Run("valid on url transport", func(t *testing.T) {
+		input := `{
+			"transportType": "streamable-http",
+			"url": "https://backend.example.com/mcp",
+			"googleIDTokenAudience": "https://backend.example.com"
+		}`
+		var config MCPClientConfig
+		require.NoError(t, json.Unmarshal([]byte(input), &config))
+		assert.Equal(t, "https://backend.example.com", config.GoogleIDTokenAudience)
+	})
+
+	t.Run("rejected without url", func(t *testing.T) {
+		input := `{
+			"transportType": "stdio",
+			"command": "docker",
+			"googleIDTokenAudience": "https://backend.example.com"
+		}`
+		var config MCPClientConfig
+		err := json.Unmarshal([]byte(input), &config)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "url-based transport")
+	})
+
+	t.Run("rejected with configured Authorization header", func(t *testing.T) {
+		input := `{
+			"transportType": "streamable-http",
+			"url": "https://backend.example.com/mcp",
+			"headers": {"Authorization": "Bearer static"},
+			"googleIDTokenAudience": "https://backend.example.com"
+		}`
+		var config MCPClientConfig
+		err := json.Unmarshal([]byte(input), &config)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Authorization")
+	})
+}

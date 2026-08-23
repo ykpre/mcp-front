@@ -1,6 +1,13 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/stainless-api/mcp-front/internal/googleidtoken"
+)
+
+// mintIDToken is a seam for tests; production uses googleidtoken.Bearer.
+var mintIDToken = googleidtoken.Bearer
 
 // copyRequestHeaders copies relevant headers from the client request to the backend request,
 // excluding hop-by-hop headers (per RFC 9110) and sensitive credentials.

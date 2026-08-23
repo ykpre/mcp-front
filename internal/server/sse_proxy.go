@@ -36,6 +36,19 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 		req.Header.Set(k, v)
 	}
 
+	if config.GoogleIDTokenAudience != "" {
+		token, err := mintIDToken(config.GoogleIDTokenAudience)
+		if err != nil {
+			log.LogErrorWithFields("sse_proxy", "Failed to mint ID token", map[string]any{
+				"error":    err.Error(),
+				"audience": config.GoogleIDTokenAudience,
+			})
+			jsonwriter.WriteInternalServerError(w, "backend authentication failed")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
 	// Ensure we accept SSE
 	req.Header.Set("Accept", "text/event-stream")
 

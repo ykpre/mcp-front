@@ -41,6 +41,19 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 		req.Header.Set(k, v)
 	}
 
+	if config.GoogleIDTokenAudience != "" {
+		token, err := mintIDToken(config.GoogleIDTokenAudience)
+		if err != nil {
+			log.LogErrorWithFields("streamable_proxy", "Failed to mint ID token", map[string]any{
+				"error":    err.Error(),
+				"audience": config.GoogleIDTokenAudience,
+			})
+			jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "backend authentication failed")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
 	req.Header.Set("Accept", "application/json, text/event-stream")
 
 	log.LogDebugWithFields("streamable_proxy", "Forwarding POST to backend", map[string]any{

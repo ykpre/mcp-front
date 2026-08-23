@@ -16,22 +16,23 @@ import (
 func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 	// Use a raw type to avoid recursion
 	type rawConfig struct {
-		Type               ServerType                 `json:"type,omitempty"`
-		TransportType      MCPClientType              `json:"transportType,omitempty"`
-		Command            json.RawMessage            `json:"command,omitempty"`
-		Args               []json.RawMessage          `json:"args,omitempty"`
-		Env                map[string]json.RawMessage `json:"env,omitempty"`
-		URL                json.RawMessage            `json:"url,omitempty"`
-		Headers            map[string]json.RawMessage `json:"headers,omitempty"`
-		Timeout            string                     `json:"timeout,omitempty"`
-		Options            *Options                   `json:"options,omitempty"`
-		RequiresUserToken  bool                       `json:"requiresUserToken,omitempty"`
-		UserAuthentication *UserAuthentication        `json:"userAuthentication,omitempty"`
-		ServiceAuths       []ServiceAuth              `json:"serviceAuths,omitempty"`
-		InlineConfig       json.RawMessage            `json:"inline,omitempty"`
-		Servers            []string                   `json:"servers,omitempty"`
-		Discovery          json.RawMessage            `json:"discovery,omitempty"`
-		Delimiter          string                     `json:"delimiter,omitempty"`
+		Type                  ServerType                 `json:"type,omitempty"`
+		TransportType         MCPClientType              `json:"transportType,omitempty"`
+		Command               json.RawMessage            `json:"command,omitempty"`
+		Args                  []json.RawMessage          `json:"args,omitempty"`
+		Env                   map[string]json.RawMessage `json:"env,omitempty"`
+		URL                   json.RawMessage            `json:"url,omitempty"`
+		Headers               map[string]json.RawMessage `json:"headers,omitempty"`
+		GoogleIDTokenAudience string                     `json:"googleIDTokenAudience,omitempty"`
+		Timeout               string                     `json:"timeout,omitempty"`
+		Options               *Options                   `json:"options,omitempty"`
+		RequiresUserToken     bool                       `json:"requiresUserToken,omitempty"`
+		UserAuthentication    *UserAuthentication        `json:"userAuthentication,omitempty"`
+		ServiceAuths          []ServiceAuth              `json:"serviceAuths,omitempty"`
+		InlineConfig          json.RawMessage            `json:"inline,omitempty"`
+		Servers               []string                   `json:"servers,omitempty"`
+		Discovery             json.RawMessage            `json:"discovery,omitempty"`
+		Delimiter             string                     `json:"delimiter,omitempty"`
 	}
 
 	var raw rawConfig
@@ -156,6 +157,16 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 		}
 		c.Headers = values
 		c.HeadersNeedToken = needsToken
+	}
+
+	c.GoogleIDTokenAudience = raw.GoogleIDTokenAudience
+	if c.GoogleIDTokenAudience != "" {
+		if c.URL == "" {
+			return fmt.Errorf("googleIDTokenAudience requires a url-based transport (sse or streamable-http)")
+		}
+		if _, ok := c.Headers["Authorization"]; ok {
+			return fmt.Errorf("googleIDTokenAudience cannot be combined with a configured Authorization header")
+		}
 	}
 
 	return nil

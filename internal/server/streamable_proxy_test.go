@@ -38,3 +38,37 @@ func TestForwardStreamablePostToBackend_SSESessionHeader(t *testing.T) {
 	assert.Equal(t, "sess-42", rec.Header().Get("Mcp-Session-Id"), "Mcp-Session-Id header must be forwarded in SSE responses")
 	assert.Contains(t, rec.Body.String(), `"result"`)
 }
+
+func TestForwardStreamablePostToBackend_GoogleIDToken(t *testing.T) {
+	var gotAuth string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+	}))
+	defer backend.Close()
+
+	orig := mintIDToken
+	mintIDToken = func(audience string) (string, error) {
+		assert.Equal(t, "https://backend.example.com", audience)
+		return "fake-id-token", nil
+	}
+	defer func() { mintIDToken = orig }()
+
+	cfg := &config.MCPClientConfig{
+		URL:                   backend.URL,
+		Timeout:               5 * time.Second,
+		GoogleIDTokenAudience: "https://backend.example.com",
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/test/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	// A client-supplied Authorization header must not leak through; the
+	// minted token wins.
+	req.Header.Set("Authorization", "Bearer client-token")
+	rec := httptest.NewRecorder()
+
+	forwardStreamablePostToBackend(context.Background(), rec, req, cfg)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "Bearer fake-id-token", gotAuth)
+}
