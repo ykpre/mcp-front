@@ -254,11 +254,6 @@ type MCPStreamableClient struct {
 	token      string
 	httpClient *http.Client
 
-	// For GET SSE streaming
-	sseConn    io.ReadCloser
-	sseScanner *bufio.Scanner
-	sseCancel  chan struct{}
-
 	mu sync.Mutex
 }
 
@@ -287,13 +282,13 @@ func (c *MCPStreamableClient) ConnectToServer(serverName string) error {
 
 	c.serverName = serverName
 
-	// For streamable-http, we can optionally open a GET SSE stream for server-initiated messages
-	// But it's not required for basic request/response
-	return c.openSSEStream()
+	// mcp-front rejects standalone GET SSE streams with 405 so idle sessions
+	// can't pin backend instances; verify that instead of opening one.
+	return c.verifyStreamRejected()
 }
 
-// openSSEStream opens a GET SSE connection for receiving server-initiated messages
-func (c *MCPStreamableClient) openSSEStream() error {
+// verifyStreamRejected checks that a GET SSE stream request is refused with 405
+func (c *MCPStreamableClient) verifyStreamRejected() error {
 	url := c.baseURL + "/" + c.serverName + "/sse"
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -305,49 +300,18 @@ func (c *MCPStreamableClient) openSSEStream() error {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Cache-Control", "no-cache")
 
-	// Use a client without timeout for SSE
-	sseClient := &http.Client{}
-	resp, err := sseClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("SSE connection failed: %v", err)
+		return fmt.Errorf("GET stream request failed: %v", err)
 	}
+	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusMethodNotAllowed {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return fmt.Errorf("SSE connection returned %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("GET stream expected 405, got %d: %s", resp.StatusCode, string(body))
 	}
-
-	c.sseConn = resp.Body
-	c.sseScanner = bufio.NewScanner(resp.Body)
-	c.sseCancel = make(chan struct{})
-
-	// Start reading SSE messages in background
-	go c.readSSEMessages()
 
 	return nil
-}
-
-// readSSEMessages reads server-initiated messages from the SSE stream
-func (c *MCPStreamableClient) readSSEMessages() {
-	for {
-		select {
-		case <-c.sseCancel:
-			return
-		default:
-			if c.sseScanner.Scan() {
-				line := c.sseScanner.Text()
-				if after, ok := strings.CutPrefix(line, "data: "); ok {
-					data := after
-					// In a real implementation, we'd process server-initiated messages here
-					tracef("StreamableClient: received SSE message: %s", data)
-				}
-			} else {
-				// Scanner stopped - connection closed or error
-				return
-			}
-		}
-	}
 }
 
 // SendMCPRequest sends a JSON-RPC request via POST
@@ -448,16 +412,5 @@ func (c *MCPStreamableClient) Close() {
 
 // close is the internal close method (must be called with lock held)
 func (c *MCPStreamableClient) close() {
-	if c.sseCancel != nil {
-		close(c.sseCancel)
-		c.sseCancel = nil
-	}
-
-	if c.sseConn != nil {
-		c.sseConn.Close()
-		c.sseConn = nil
-		c.sseScanner = nil
-	}
-
 	c.serverName = ""
 }

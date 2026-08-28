@@ -559,90 +559,6 @@ func TestHandleStreamablePost(t *testing.T) {
 	})
 }
 
-func TestHandleStreamableGet(t *testing.T) {
-	t.Run("successful SSE stream", func(t *testing.T) {
-		// Create a mock SSE backend
-		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Verify Accept header
-			assert.Equal(t, "text/event-stream", r.Header.Get("Accept"))
-
-			// Send SSE response
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.WriteHeader(http.StatusOK)
-
-			// Send some SSE data
-			_, _ = w.Write([]byte("data: {\"type\":\"connected\"}\n\n"))
-			w.(http.Flusher).Flush()
-		}))
-		defer backend.Close()
-
-		// Configure client
-		serverConfig := &config.MCPClientConfig{
-			URL:           backend.URL,
-			TransportType: config.MCPClientTypeStreamable,
-			Headers: map[string]string{
-				"Authorization": "Bearer test-token",
-			},
-			Timeout: 5 * time.Second,
-		}
-
-		handler := createTestMCPHandler("test-streamable", serverConfig)
-
-		// Create request with Accept header
-		req := httptest.NewRequest(http.MethodGet, "/test-streamable", nil)
-		req.Header.Set("Accept", "text/event-stream")
-		rec := httptest.NewRecorder()
-
-		// Call the function
-		handler.handleStreamableGet(context.Background(), rec, req, "user@example.com", serverConfig)
-
-		// Verify response
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
-		assert.Contains(t, rec.Body.String(), "data: {\"type\":\"connected\"}")
-	})
-
-	t.Run("missing Accept header", func(t *testing.T) {
-		serverConfig := &config.MCPClientConfig{
-			URL:           "http://example.com",
-			TransportType: config.MCPClientTypeStreamable,
-		}
-
-		handler := createTestMCPHandler("test-streamable", serverConfig)
-
-		// Create request without Accept header
-		req := httptest.NewRequest(http.MethodGet, "/test-streamable", nil)
-		rec := httptest.NewRecorder()
-
-		handler.handleStreamableGet(context.Background(), rec, req, "user@example.com", serverConfig)
-
-		// Should return 406 Not Acceptable
-		assert.Equal(t, http.StatusNotAcceptable, rec.Code)
-		assert.Contains(t, rec.Body.String(), "GET requests must accept text/event-stream")
-	})
-
-	t.Run("wrong Accept header", func(t *testing.T) {
-		serverConfig := &config.MCPClientConfig{
-			URL:           "http://example.com",
-			TransportType: config.MCPClientTypeStreamable,
-		}
-
-		handler := createTestMCPHandler("test-streamable", serverConfig)
-
-		// Create request with wrong Accept header
-		req := httptest.NewRequest(http.MethodGet, "/test-streamable", nil)
-		req.Header.Set("Accept", "application/json")
-		rec := httptest.NewRecorder()
-
-		handler.handleStreamableGet(context.Background(), rec, req, "user@example.com", serverConfig)
-
-		// Should return 406 Not Acceptable
-		assert.Equal(t, http.StatusNotAcceptable, rec.Code)
-		assert.Contains(t, rec.Body.String(), "GET requests must accept text/event-stream")
-	})
-}
-
 func TestStreamableTransportRouting(t *testing.T) {
 	t.Run("POST request routes to handleStreamablePost", func(t *testing.T) {
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -669,11 +585,10 @@ func TestStreamableTransportRouting(t *testing.T) {
 		assert.Contains(t, rec.Body.String(), `{"result": "ok"}`)
 	})
 
-	t.Run("GET request routes to handleStreamableGet", func(t *testing.T) {
+	t.Run("GET request is rejected with 405", func(t *testing.T) {
+		backendHit := false
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("data: test\n\n"))
+			backendHit = true
 		}))
 		defer backend.Close()
 
@@ -690,8 +605,9 @@ func TestStreamableTransportRouting(t *testing.T) {
 
 		handler.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+		assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+		assert.Contains(t, rec.Body.String(), "standalone SSE stream not offered")
+		assert.False(t, backendHit)
 	})
 
 	t.Run("unsupported method returns 405", func(t *testing.T) {

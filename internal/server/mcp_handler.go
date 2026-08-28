@@ -100,14 +100,17 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			})
 			h.handleStreamablePost(ctx, w, r, userEmail, serverConfig)
 		case http.MethodGet:
-			log.LogInfoWithFields("mcp", "Handling streamable GET request", map[string]any{
+			// No standalone SSE stream: clients would otherwise hold the GET open
+			// for their whole session, billing backend CPU 24/7. 405 tells
+			// spec-compliant clients the stream isn't offered; POST still works.
+			log.LogInfoWithFields("mcp", "Rejecting streamable GET request", map[string]any{
 				"path":       r.URL.Path,
 				"server":     h.serverName,
 				"user":       userEmail,
 				"remoteAddr": r.RemoteAddr,
 				"userAgent":  r.UserAgent(),
 			})
-			h.handleStreamableGet(ctx, w, r, userEmail, serverConfig)
+			http.Error(w, "standalone SSE stream not offered", http.StatusMethodNotAllowed)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -359,21 +362,4 @@ func (h *MCPHandler) handleStreamablePost(ctx context.Context, w http.ResponseWr
 	})
 
 	forwardStreamablePostToBackend(ctx, w, r, config)
-}
-
-// handleStreamableGet handles GET requests for streamable-http transport
-func (h *MCPHandler) handleStreamableGet(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
-	acceptHeader := r.Header.Get("Accept")
-	if !strings.Contains(acceptHeader, "text/event-stream") {
-		http.Error(w, "GET requests must accept text/event-stream", http.StatusNotAcceptable)
-		return
-	}
-
-	log.LogInfoWithFields("mcp", "Proxying streamable GET request to backend", map[string]any{
-		"service": h.serverName,
-		"user":    userEmail,
-		"backend": config.URL,
-	})
-
-	forwardSSEToBackend(ctx, w, r, config)
 }
