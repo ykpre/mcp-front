@@ -39,6 +39,34 @@ func TestForwardStreamablePostToBackend_SSESessionHeader(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `"result"`)
 }
 
+func TestForwardStreamablePostToBackend_RejectsSubscriptionsListen(t *testing.T) {
+	backendHit := false
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendHit = true
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer backend.Close()
+
+	cfg := &config.MCPClientConfig{
+		URL:     backend.URL,
+		Timeout: 5 * time.Second,
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/test/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":"listen:1","method":"subscriptions/listen","params":{"notifications":{"toolsListChanged":true}}}`))
+	rec := httptest.NewRecorder()
+
+	forwardStreamablePostToBackend(context.Background(), rec, req, cfg)
+
+	assert.False(t, backendHit, "subscriptions/listen must not reach the backend")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.Contains(t, rec.Body.String(), `"id":"listen:1"`)
+	assert.Contains(t, rec.Body.String(), `"code":-32601`)
+}
+
 func TestForwardStreamablePostToBackend_GoogleIDToken(t *testing.T) {
 	var gotAuth string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

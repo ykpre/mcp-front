@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"maps"
 	"net/http"
@@ -21,6 +22,21 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 			"error": err.Error(),
 		})
 		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Failed to read request")
+		return
+	}
+
+	// SEP-2575 subscriptions/listen is a request the server answers by holding
+	// the response stream open for the rest of the session. Like the standalone
+	// GET stream, that keeps a backend instance billed around the clock per
+	// client session, so it is refused here before it reaches any backend.
+	// Clients treat the error as "listen unavailable" and fall back to plain
+	// polling; none of the proxied backends change their tool list anyway.
+	if rpc := parseJSONRPCRequest(body); rpc != nil && rpc.Method == "subscriptions/listen" {
+		log.LogInfoWithFields("streamable_proxy", "Rejecting subscriptions/listen request", map[string]any{
+			"backendURL": config.URL,
+			"userAgent":  r.UserAgent(),
+		})
+		jsonrpc.WriteError(w, rpc.ID, jsonrpc.MethodNotFound, "subscriptions/listen not offered")
 		return
 	}
 
@@ -109,4 +125,14 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 			})
 		}
 	}
+}
+
+// parseJSONRPCRequest returns the request when body is a single JSON-RPC
+// request object, or nil for anything else (batches, notifications, garbage).
+func parseJSONRPCRequest(body []byte) *jsonrpc.Request {
+	var rpc jsonrpc.Request
+	if err := json.Unmarshal(body, &rpc); err != nil || rpc.Method == "" {
+		return nil
+	}
+	return &rpc
 }
